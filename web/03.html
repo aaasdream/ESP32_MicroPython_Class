@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Sensor Live Data</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #1e1e1e;
+            padding: 30px 40px;
+            border-radius: 15px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            width: 90%;
+            max-width: 450px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #bb86fc;
+            margin-top: 0;
+            margin-bottom: 25px;
+        }
+        .sensor-card {
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #03dac6;
+            margin-bottom: 10px;
+            font-size: 1.5em;
+        }
+        .data-display {
+            font-size: 3.5em;
+            font-weight: bold;
+            color: #cfcfcf;
+            min-height: 60px; /* 避免文字跳動 */
+            display: flex;
+            justify-content: center;
+            align-items: baseline;
+        }
+        .data-unit {
+            font-size: 0.4em;
+            color: #9e9e9e;
+            margin-left: 10px;
+        }
+        #status {
+            margin-top: 25px;
+            font-size: 1em;
+            font-style: italic;
+        }
+        .status-connected { color: #4caf50; }
+        .status-disconnected { color: #f44336; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ESP32 感測器</h1>
+
+        <div class="sensor-card">
+            <h2>超音波測距儀</h2>
+            <div id="distance-display" class="data-display">
+                <span>--</span><span class="data-unit">cm</span>
+            </div>
+        </div>
+
+        <div class="sensor-card">
+            <h2>可變電阻</h2>
+            <div id="pot-display" class="data-display">
+                <span>--</span><span class="data-unit"></span>
+            </div>
+        </div>
+        
+        <p id="status" class="status-disconnected">正在連線...</p>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const distanceDisplay = document.querySelector('#distance-display span:first-child');
+            const potDisplay = document.querySelector('#pot-display span:first-child');
+            const statusElement = document.getElementById('status');
+            
+            // 使用 window.location.host 動態取得主機 IP
+            const wsUrl = `ws://${window.location.host}/ws`;
+            let socket;
+
+            function connect() {
+                socket = new WebSocket(wsUrl);
+
+                socket.onopen = () => {
+                    console.log('WebSocket 連線成功！');
+                    statusElement.textContent = '已連線';
+                    statusElement.className = 'status-connected';
+                };
+
+                socket.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+
+                        // 更新距離
+                        if (data.distance !== undefined) {
+                            if (data.distance >= 0) {
+                                distanceDisplay.textContent = data.distance.toFixed(2);
+                            } else {
+                                distanceDisplay.textContent = '超出範圍';
+                            }
+                        }
+
+                        // 更新可變電阻值
+                        if (data.potentiometer !== undefined) {
+                            potDisplay.textContent = data.potentiometer;
+                        }
+
+                    } catch (e) {
+                        console.error('解析 JSON 失敗:', e);
+                    }
+                };
+
+                socket.onclose = () => {
+                    console.log('WebSocket 連線已關閉。5 秒後嘗試重新連線...');
+                    statusElement.textContent = '已斷線，嘗試重新連線...';
+                    statusElement.className = 'status-disconnected';
+                    distanceDisplay.textContent = '--';
+                    potDisplay.textContent = '--';
+                    setTimeout(connect, 5000); // 5秒後嘗試重連
+                };
+
+                socket.onerror = (error) => {
+                    console.error('WebSocket 錯誤:', error);
+                    socket.close();
+                };
+            }
+
+            connect();
+        });
+    </script>
+</body>
+</html>

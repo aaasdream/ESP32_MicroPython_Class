@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Web Server</title>
+    <style>
+        /* --- Embedded CSS --- */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f2f5;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+        }
+        h1 {
+            color: #4a4a4a;
+            margin-bottom: 15px;
+        }
+        p {
+            font-size: 1.1em;
+            line-height: 1.6;
+        }
+        #status {
+            color: #5a5a5a;
+            font-style: italic;
+            margin-top: 20px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 1em;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            margin-top: 20px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ESP32 Microdot Web Server</h1>
+        <p>這是一個由 ESP32 上的 MicroPython 提供的網頁！</p>
+        <p id="status">點擊按鈕來測試 JavaScript。</p>
+        <button id="myButton">點我！</button>
+    </div>
+
+    <script>
+        // --- Embedded JavaScript ---
+        document.addEventListener('DOMContentLoaded', (event) => {
+            console.log("網頁和腳本都已載入！");
+
+            const button = document.getElementById('myButton');
+            const statusParagraph = document.getElementById('status');
+            let clickCount = 0;
+
+            button.addEventListener('click', () => {
+                clickCount++;
+                statusParagraph.textContent = `按鈕已被點擊 ${clickCount} 次！`;
+                console.log(`Button clicked ${clickCount} times.`);
+            });
+        });
+    </script>
+</body>
+</html>

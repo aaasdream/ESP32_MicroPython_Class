@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Ultrasonic Sensor Live Data</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            background-color: #1e1e1e;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            width: 90%;
+            max-width: 400px;
+        }
+        h1 {
+            color: #bb86fc;
+            margin-bottom: 25px;
+        }
+        #distance-display {
+            font-size: 4em;
+            font-weight: bold;
+            color: #03dac6;
+            margin: 20px 0;
+            min-height: 80px; /* 避免文字跳動 */
+        }
+        #distance-unit {
+            font-size: 1.5em;
+            color: #03dac6;
+            margin-left: 10px;
+        }
+        #status {
+            margin-top: 25px;
+            font-size: 1em;
+            font-style: italic;
+        }
+        .status-connected { color: #4caf50; }
+        .status-disconnected { color: #f44336; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>超音波測距儀</h1>
+        <div>
+            <span id="distance-display">--</span><span id="distance-unit">cm</span>
+        </div>
+        <p id="status" class="status-disconnected">正在連線...</p>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const distanceDisplay = document.getElementById('distance-display');
+            const statusElement = document.getElementById('status');
+            
+            // 使用 window.location.host 來動態取得主機 IP，這樣就不用寫死
+            const wsUrl = `ws://${window.location.host}/ws`;
+            let socket;
+
+            function connect() {
+                socket = new WebSocket(wsUrl);
+
+                socket.onopen = () => {
+                    console.log('WebSocket 連線成功！');
+                    statusElement.textContent = '已連線';
+                    statusElement.className = 'status-connected';
+                };
+
+                socket.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.distance !== undefined) {
+                            if (data.distance > 0) {
+                                distanceDisplay.textContent = data.distance.toFixed(2);
+                            } else {
+                                distanceDisplay.textContent = '超出範圍';
+                            }
+                        }
+                    } catch (e) {
+                        console.error('解析 JSON 失敗:', e);
+                    }
+                };
+
+                socket.onclose = () => {
+                    console.log('WebSocket 連線已關閉。5 秒後嘗試重新連線...');
+                    statusElement.textContent = '已斷線，嘗試重新連線...';
+                    statusElement.className = 'status-disconnected';
+                    distanceDisplay.textContent = '--';
+                    setTimeout(connect, 5000); // 5秒後嘗試重連
+                };
+
+                socket.onerror = (error) => {
+                    console.error('WebSocket 錯誤:', error);
+                    socket.close(); // 觸發 onclose 的重連邏輯
+                };
+            }
+
+            connect();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Sensor & LED Dashboard</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f7f9;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            text-align: center;
+            background-color: white;
+            padding: 30px 40px;
+            border-radius: 15px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 450px;
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        #status {
+            font-size: 0.9em;
+            padding: 8px 12px;
+            border-radius: 5px;
+            margin-bottom: 25px;
+            font-weight: 500;
+        }
+        #status.connected { background-color: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+        #status.disconnected { background-color: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
+        .sensor-grid, .control-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .sensor-display, .control-panel {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 10px;
+            padding: 25px;
+        }
+        .distance-display {
+             grid-column: 1 / -1; /* 讓距離顯示佔滿整行 */
+        }
+        .sensor-label, .control-label {
+            font-size: 1.1em;
+            color: #6c757d;
+            margin-bottom: 10px;
+        }
+        .sensor-value {
+            font-size: 2.8em;
+            font-weight: bold;
+            color: #0056b3;
+            margin-top: 8px;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        .sensor-value span {
+            font-size: 0.5em;
+            font-weight: normal;
+            margin-left: 5px;
+            color: #495057;
+        }
+        input[type="color"] {
+            width: 80px;
+            height: 80px;
+            border: none;
+            padding: 0;
+            background: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ESP32 儀表板</h1>
+        <div id="status" class="disconnected">正在連接...</div>
+        
+        <h2>感測器數據</h2>
+        <div class="sensor-grid">
+            <div class="sensor-display distance-display">
+                <div class="sensor-label">超音波距離</div>
+                <div id="distance" class="sensor-value">---<span>cm</span></div>
+            </div>
+            <div class="sensor-display">
+                <div class="sensor-label">可變電阻</div>
+                <div id="potentiometer" class="sensor-value">---<span></span></div>
+            </div>
+        </div>
+        
+        <h2>LED 控制</h2>
+        <div class="control-grid">
+            <div class="control-panel">
+                <div class="control-label">LED 1</div>
+                <input type="color" id="colorPicker1" value="#000000">
+            </div>
+            <div class="control-panel">
+                <div class="control-label">LED 2</div>
+                <input type="color" id="colorPicker2" value="#000000">
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const statusDiv = document.getElementById('status');
+            const distanceDiv = document.getElementById('distance');
+            const potDiv = document.getElementById('potentiometer');
+            const colorPicker1 = document.getElementById('colorPicker1');
+            const colorPicker2 = document.getElementById('colorPicker2');
+
+            let ws;
+
+            function connect() {
+                const wsUrl = `ws://${window.location.host}/ws`;
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    statusDiv.textContent = '已連接';
+                    statusDiv.className = 'connected';
+                };
+
+                // 處理從伺服器收到的感測器數據
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        
+                        // 更新超音波距離
+                        if (data.distance !== undefined && data.distance >= 0) {
+                            distanceDiv.innerHTML = `${data.distance.toFixed(1)}<span>cm</span>`;
+                        } else {
+                            distanceDiv.innerHTML = `---<span>cm</span>`;
+                        }
+
+                        // 更新可變電阻數值 (原始值)
+                        if (data.potentiometer !== undefined && data.potentiometer >= 0) {
+                            potDiv.innerHTML = `${data.potentiometer}<span>(0-4095)</span>`;
+                        } else {
+                             potDiv.innerHTML = `---<span></span>`;
+                        }
+
+                    } catch (e) {
+                        console.error('解析 JSON 失敗:', e);
+                    }
+                };
+
+                ws.onclose = () => {
+                    statusDiv.textContent = '已斷開，3 秒後重新連接...';
+                    statusDiv.className = 'disconnected';
+                    setTimeout(connect, 3000);
+                };
+
+                ws.onerror = (error) => {
+                    console.error('WebSocket 錯誤:', error);
+                    ws.close();
+                };
+            }
+
+            // 發送顏色指令的函式
+            function sendColor(ledIndex, colorValue) {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    const payload = JSON.stringify({
+                        led: ledIndex,
+                        color: colorValue
+                    });
+                    ws.send(payload);
+                }
+            }
+
+            // 為顏色選擇器添加事件監聽器
+            colorPicker1.addEventListener('input', () => sendColor(0, colorPicker1.value));
+            colorPicker2.addEventListener('input', () => sendColor(1, colorPicker2.value));
+
+            // 啟動 WebSocket 連線
+            connect();
+        });
+    </script>
+</body>
+</html>

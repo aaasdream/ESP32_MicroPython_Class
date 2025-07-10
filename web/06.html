@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 圖形化儀表板</title>
+    <!-- 引入 Canvas-Gauges 和 Chart.js 函式庫 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-gauges@2.1.7/gauge.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f2f5;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+        }
+        .container {
+            background-color: white;
+            padding: 20px 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            width: 95%;
+            max-width: 800px;
+        }
+        h1, h2 {
+            text-align: center;
+            color: #2c3e50;
+            border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        #status { font-size: 0.9em; padding: 8px 12px; border-radius: 5px; margin-bottom: 20px; font-weight: 500; text-align: center; }
+        #status.connected { background-color: #e8f5e9; color: #2e7d32; }
+        #status.disconnected { background-color: #ffebee; color: #c62828; }
+        
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+        }
+        .panel { background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 10px; padding: 20px; }
+        .panel-title { font-size: 1.2em; color: #495057; margin-bottom: 15px; text-align: center; font-weight: 600; }
+        
+        /* 圖表和儀表板 */
+        #distance-chart-container { position: relative; height: 250px; width: 100%; }
+        #pot-gauge-container { text-align: center; }
+        
+        /* 方向盤 */
+        #steering-wheel-container { display: flex; justify-content: center; align-items: center; height: 250px; }
+        #steering-wheel { cursor: grab; }
+        #steering-wheel:active { cursor: grabbing; }
+
+        /* LED 色盤 */
+        #color-palette {
+            width: 100%;
+            height: 40px;
+            border-radius: 5px;
+            cursor: pointer;
+            background: linear-gradient(to right, hsl(0, 100%, 50%), hsl(60, 100%, 50%), hsl(120, 100%, 50%), hsl(180, 100%, 50%), hsl(240, 100%, 50%), hsl(300, 100%, 50%), hsl(360, 100%, 50%));
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ESP32 互動儀表板</h1>
+        <div id="status" class="disconnected">正在連接...</div>
+        
+        <div class="grid-container">
+            <div class="panel">
+                <h2 class="panel-title">超音波距離</h2>
+                <div id="distance-chart-container">
+                    <canvas id="distance-chart"></canvas>
+                </div>
+            </div>
+            <div class="panel">
+                <h2 class="panel-title">可變電阻 (0-100%)</h2>
+                <div id="pot-gauge-container">
+                    <canvas id="pot-gauge"></canvas>
+                </div>
+            </div>
+            <div class="panel">
+                <h2 class="panel-title">伺服馬達控制</h2>
+                <div id="steering-wheel-container">
+                    <svg id="steering-wheel" width="200" height="200" viewBox="0 0 100 100">
+                        <circle cx="50" cy="50" r="45" fill="none" stroke="#555" stroke-width="6"/>
+                        <line x1="50" y1="5" x2="50" y2="30" stroke="#555" stroke-width="4"/>
+                        <line x1="15" y1="75" x2="35" y2="58" stroke="#555" stroke-width="4"/>
+                        <line x1="85" y1="75" x2="65" y2="58" stroke="#555" stroke-width="4"/>
+                        <circle cx="50" cy="50" r="10" fill="#888"/>
+                    </svg>
+                </div>
+            </div>
+             <div class="panel">
+                <h2 class="panel-title">WS2812 LED 顏色</h2>
+                <div id="color-palette"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const statusDiv = document.getElementById('status');
+        let ws;
+
+        // --- Chart.js 初始化 (距離圖表) ---
+        const chartCtx = document.getElementById('distance-chart').getContext('2d');
+        const MAX_DATA_POINTS = 50;
+        const distanceChart = new Chart(chartCtx, {
+            type: 'line',
+            data: {
+                labels: Array(MAX_DATA_POINTS).fill(''),
+                datasets: [{
+                    label: '距離 (cm)',
+                    data: Array(MAX_DATA_POINTS).fill(null),
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.2,
+                    fill: false,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: { y: { beginAtZero: true, max: 150 } }, // 可調整最大距離
+                animation: false, plugins: { legend: { display: false } }
+            }
+        });
+
+        // --- Canvas-Gauges 初始化 (電阻儀表) ---
+        const potGauge = new RadialGauge({
+            renderTo: 'pot-gauge',
+            width: 250, height: 250, units: "%",
+            minValue: 0, maxValue: 100,
+            majorTicks: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+            minorTicks: 2, strokeTicks: true,
+            highlights: [ { from: 80, to: 100, color: 'rgba(200, 50, 50, .75)' } ],
+            colorPlate: "#fff", borderShadowWidth: 0, borders: false,
+            needleType: "arrow", needleWidth: 2,
+            needleCircleSize: 7, needleCircleOuter: true, needleCircleInner: false,
+            animationDuration: 100, animationRule: "linear"
+        }).draw();
+
+        // --- 方向盤 SVG 控制 ---
+        const steeringWheel = document.getElementById('steering-wheel');
+        let isDragging = false;
+        let currentRotation = 90; // 初始角度 (中間)
+        let startAngle = 0;
+
+        function getCenter(element) {
+            const rect = element.getBoundingClientRect();
+            return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        }
+
+        steeringWheel.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            isDragging = true;
+            const center = getCenter(steeringWheel);
+            startAngle = Math.atan2(e.clientY - center.y, e.clientX - center.x) * (180 / Math.PI) - currentRotation;
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const center = getCenter(steeringWheel);
+            let angle = Math.atan2(e.clientY - center.y, e.clientX - center.x) * (180 / Math.PI);
+            let rotation = angle - startAngle;
+            // 限制角度在 0-180 度之間
+            currentRotation = Math.max(0, Math.min(180, rotation));
+            steeringWheel.style.transform = `rotate(${currentRotation - 90}deg)`; // -90度是視覺校正
+            sendCommand({ servo_angle: Math.round(currentRotation) });
+        });
+
+        document.addEventListener('mouseup', () => { isDragging = false; });
+        
+        // --- LED 色盤控制 ---
+        const colorPalette = document.getElementById('color-palette');
+        function hslToHex(h, s, l) {
+            l /= 100;
+            const a = s * Math.min(l, 1 - l) / 100;
+            const f = n => {
+                const k = (n + h / 30) % 12;
+                const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+                return Math.round(255 * color).toString(16).padStart(2, '0');
+            };
+            return `#${f(0)}${f(8)}${f(4)}`;
+        }
+
+        colorPalette.addEventListener('mousemove', (e) => {
+            const rect = e.target.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const hue = (x / rect.width) * 360;
+            const hexColor = hslToHex(hue, 100, 50);
+            sendCommand({ led_color: hexColor });
+        });
+        
+        // --- WebSocket 主邏輯 ---
+        function connect() {
+            ws = new WebSocket(`ws://${window.location.host}/ws`);
+
+            ws.onopen = () => { statusDiv.textContent = '已連接'; statusDiv.className = 'connected'; };
+            ws.onclose = () => { statusDiv.textContent = '已斷開，3 秒後重新連接...'; statusDiv.className = 'disconnected'; setTimeout(connect, 3000); };
+            ws.onerror = (error) => { console.error('WebSocket 錯誤:', error); ws.close(); };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+
+                    // 更新距離圖表
+                    if (data.distance !== undefined && data.distance >= 0) {
+                        const chartData = distanceChart.data.datasets[0].data;
+                        chartData.push(data.distance);
+                        if (chartData.length > MAX_DATA_POINTS) chartData.shift();
+                        distanceChart.update();
+                    }
+
+                    // 更新電阻儀表
+                    if (data.potentiometer !== undefined && data.potentiometer >= 0) {
+                        potGauge.value = (data.potentiometer / 4095 * 100);
+                    }
+                } catch (e) { console.error('解析 JSON 失敗:', e); }
+            };
+        }
+
+        function sendCommand(payload) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(payload));
+            }
+        }
+
+        connect(); // 啟動連線
+    });
+    </script>
+</body>
+</html>

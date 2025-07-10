@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 打磚塊</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a2e;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .header {
+            width: 80%;
+            max-width: 800px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background-color: #162447;
+            border-radius: 10px 10px 0 0;
+            box-sizing: border-box;
+        }
+        h1 { margin: 0; font-size: 1.5em; color: #e94560; }
+        .info { font-size: 1em; text-align: right; }
+        #status { font-weight: bold; }
+        #status.connected { color: #50fa7b; }
+        #status.disconnected { color: #ff5555; }
+        #distance-info { margin-top: 5px; }
+
+        #gameCanvas {
+            background-color: #0f182c;
+            border-radius: 0 0 10px 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+        }
+        .modal {
+            display: flex;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            color: white;
+            text-align: center;
+        }
+        .modal h2 { font-size: 3em; margin: 0; color: #e94560; }
+        .modal p { font-size: 1.2em; }
+        .modal button {
+            padding: 10px 30px;
+            font-size: 1em;
+            cursor: pointer;
+            background-color: #e94560;
+            border: none;
+            color: white;
+            border-radius: 5px;
+            margin-top: 20px;
+            transition: background-color 0.3s;
+        }
+        .modal button:hover { background-color: #ff5a75; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>ESP32 打磚塊</h1>
+        <div class="info">
+            <div id="status" class="disconnected">● 連線中</div>
+            <div id="distance-info">距離: --- cm</div>
+            <div>分數: <span id="score">0</span></div>
+        </div>
+    </div>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="start-screen" class="modal">
+        <h2>ESP32 打磚塊</h2>
+        <p>使用可變電阻移動下方的打擊棒</p>
+        <button id="start-button">開始遊戲</button>
+    </div>
+    <div id="game-over-screen" class="modal" style="display:none;">
+        <h2>遊戲結束</h2>
+        <p>最終分數: <span id="final-score">0</span></p>
+        <button id="restart-button">重新開始</button>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // WebSocket and UI elements
+        const statusDiv = document.getElementById('status');
+        const distanceDiv = document.getElementById('distance-info');
+        const scoreSpan = document.getElementById('score');
+        const finalScoreSpan = document.getElementById('final-score');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const startButton = document.getElementById('start-button');
+        const restartButton = document.getElementById('restart-button');
+        let ws;
+
+        // Canvas and game elements
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Game state
+        let paddleX;
+        let gameRunning = false;
+        let score = 0;
+        
+        // Ball properties
+        const ball = {
+            x: canvas.width / 2,
+            y: canvas.height - 50,
+            dx: 4,
+            dy: -4,
+            radius: 8
+        };
+
+        // Paddle properties
+        const paddle = {
+            height: 15,
+            width: 120,
+            x: (canvas.width - 120) / 2
+        };
+
+        // Brick properties
+        const brick = {
+            rowCount: 5,
+            columnCount: 10,
+            width: 75,
+            height: 20,
+            padding: 2,
+            offsetTop: 50,
+            offsetLeft: 25
+        };
+        let bricks = [];
+        const brickColors = ["#e94560", "#f8b400", "#50fa7b", "#8be9fd", "#bd93f9"];
+
+        function createBricks() {
+            bricks = [];
+            for (let c = 0; c < brick.columnCount; c++) {
+                bricks[c] = [];
+                for (let r = 0; r < brick.rowCount; r++) {
+                    bricks[c][r] = { x: 0, y: 0, status: 1, color: brickColors[r] };
+                }
+            }
+        }
+        
+        function drawBall() {
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = "#e0e0e0";
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        function drawPaddle() {
+            ctx.beginPath();
+            ctx.rect(paddle.x, canvas.height - paddle.height, paddle.width, paddle.height);
+            ctx.fillStyle = "#8be9fd";
+            ctx.fill();
+            ctx.closePath();
+        }
+        
+        function drawBricks() {
+            for (let c = 0; c < brick.columnCount; c++) {
+                for (let r = 0; r < brick.rowCount; r++) {
+                    if (bricks[c][r].status === 1) {
+                        const brickX = c * (brick.width + brick.padding) + brick.offsetLeft;
+                        const brickY = r * (brick.height + brick.padding) + brick.offsetTop;
+                        bricks[c][r].x = brickX;
+                        bricks[c][r].y = brickY;
+                        ctx.beginPath();
+                        ctx.rect(brickX, brickY, brick.width, brick.height);
+                        ctx.fillStyle = bricks[c][r].color;
+                        ctx.fill();
+                        ctx.closePath();
+                    }
+                }
+            }
+        }
+        
+        function collisionDetection() {
+            for (let c = 0; c < brick.columnCount; c++) {
+                for (let r = 0; r < brick.rowCount; r++) {
+                    const b = bricks[c][r];
+                    if (b.status === 1) {
+                        if (ball.x > b.x && ball.x < b.x + brick.width && ball.y > b.y && ball.y < b.y + brick.height) {
+                            ball.dy = -ball.dy;
+                            b.status = 0;
+                            score++;
+                            scoreSpan.textContent = score;
+                            // Send brick color to ESP32
+                            sendCommand({ brick_color: b.color });
+                            if (score === brick.rowCount * brick.columnCount) {
+                                gameOver(true);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function draw() {
+            if (!gameRunning) return;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawBricks();
+            drawBall();
+            drawPaddle();
+            collisionDetection();
+
+            // Ball movement and collision with walls
+            if (ball.x + ball.dx > canvas.width - ball.radius || ball.x + ball.dx < ball.radius) {
+                ball.dx = -ball.dx;
+            }
+            if (ball.y + ball.dy < ball.radius) {
+                ball.dy = -ball.dy;
+            } else if (ball.y + ball.dy > canvas.height - ball.radius) {
+                if (ball.x > paddle.x && ball.x < paddle.x + paddle.width) {
+                    ball.dy = -ball.dy;
+                } else {
+                    gameOver(false);
+                }
+            }
+
+            ball.x += ball.dx;
+            ball.y += ball.dy;
+            
+            requestAnimationFrame(draw);
+        }
+
+        function resetGame() {
+            score = 0;
+            scoreSpan.textContent = 0;
+            ball.x = canvas.width / 2;
+            ball.y = canvas.height - 50;
+            ball.dx = 4;
+            ball.dy = -4;
+            createBricks();
+        }
+
+        function startGame() {
+            resetGame();
+            gameRunning = true;
+            startScreen.style.display = 'none';
+            gameOverScreen.style.display = 'none';
+            draw();
+        }
+
+        function gameOver(win) {
+            gameRunning = false;
+            finalScoreSpan.textContent = score;
+            gameOverScreen.querySelector('h2').textContent = win ? '恭喜！你贏了！' : '遊戲結束';
+            gameOverScreen.style.display = 'flex';
+        }
+        
+        // WebSocket logic
+        function connect() {
+            ws = new WebSocket(`ws://${window.location.host}/ws`);
+
+            ws.onopen = () => { statusDiv.textContent = '● 已連接'; statusDiv.className = 'connected'; };
+            ws.onclose = () => { statusDiv.textContent = '● 已斷開'; statusDiv.className = 'disconnected'; setTimeout(connect, 3000); };
+            ws.onerror = (e) => { console.error('WebSocket Error:', e); ws.close(); };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+
+                    if (data.distance !== undefined && data.distance >= 0) {
+                        distanceDiv.textContent = `距離: ${data.distance.toFixed(1)} cm`;
+                    }
+                    
+                    if (data.potentiometer !== undefined) {
+                        // Map potentiometer value (0-4095) to paddle position
+                        const potValue = data.potentiometer;
+                        paddle.x = (potValue / 4095) * (canvas.width - paddle.width);
+                    }
+                } catch (e) { console.error('解析 JSON 失敗:', e); }
+            };
+        }
+
+        function sendCommand(payload) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(payload));
+            }
+        }
+
+        // Event listeners for buttons
+        startButton.addEventListener('click', startGame);
+        restartButton.addEventListener('click', startGame);
+
+        connect();
+    });
+    </script>
+</body>
+</html>
