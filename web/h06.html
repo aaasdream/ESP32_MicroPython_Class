@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>月球環繞地球</title>
+    <style>
+        /* CSS 樣式 (大部分不變) */
+
+        /* 1. 基本設定與深色背景 */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0c0c1a;
+            cursor: none;
+        }
+
+        /* 2. 星星的容器 */
+        #star-container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            z-index: 1; 
+        }
+
+        /* 3. 單顆星星的樣式 */
+        .star {
+            position: absolute;
+            color: white;
+            animation-name: twinkle;
+            animation-iteration-count: infinite;
+            animation-timing-function: ease-in-out;
+            animation-direction: alternate;
+        }
+
+        /* 4. 星星閃爍的關鍵影格動畫 */
+        @keyframes twinkle {
+            0% { opacity: 0.2; transform: scale(0.8); }
+            100% { opacity: 1; transform: scale(1.2); }
+        }
+
+        /* 5. 月球的樣式 */
+        #moon {
+            position: absolute;
+            width: 200px;
+            height: 200px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 160px; 
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 15; 
+        }
+
+        /* 6. 地球的樣式 */
+        #earth {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 300px;
+            height: 300px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 250px;
+            z-index: 10;
+            animation: spin 60s linear infinite;
+        }
+
+        /* 7. 地球旋轉的關鍵影格動畫 */
+        @keyframes spin {
+            from { transform: translate(-50%, -50%) rotate(0deg); }
+            to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        
+        /* --- 【新增 CSS】 --- */
+
+        /* 8. 太空人的樣式 */
+        .robot {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            /* 讓圖片內容填滿容器 */
+            object-fit: contain; 
+            /* 讓點擊事件穿透，避免影響月球發射 */
+            pointer-events: none; 
+             /* 初始置中，JS 會再調整位置 */
+            transform: translate(-50%, -50%);
+            /* 圖層設定在月球和地球之間 */
+            z-index: 12; 
+            /* 套用旋轉動畫 */
+            animation: spin-robot 15s linear infinite;
+        }
+
+        /* 9. 太空人旋轉的關鍵影格動畫 */
+        @keyframes spin-robot {
+            from { transform: translate(-50%, -50%) rotate(0deg); }
+            to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        
+    </style>
+</head>
+<body>
+
+    <!-- 容器順序不影響 z-index 的最終結果 -->
+    <div id="star-container"></div>
+    <div id="earth"></div>
+    <div id="moon"></div>
+
+    <!-- 太空人會由 JS 動態新增到 body 中 -->
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            
+            // --- 星空產生邏輯 (不變) ---
+            const starContainer = document.getElementById('star-container');
+            const numStars = 250;
+            for (let i = 0; i < numStars; i++) {
+                const star = document.createElement('div');
+                star.classList.add('star');
+                star.textContent = '•';
+                star.style.top = `${Math.random() * 100}vh`;
+                star.style.left = `${Math.random() * 100}vw`;
+                star.style.fontSize = `${Math.random() * 3 + 1}px`;
+                star.style.animationDuration = `${Math.random() * 4 + 3}s`;
+                star.style.animationDelay = `${Math.random() * 5}s`;
+                starContainer.appendChild(star);
+            }
+
+            // --- 抓取月球和地球的元素 (不變) ---
+            const moon = document.getElementById('moon');
+            const earth = document.getElementById('earth');
+            earth.textContent = '🌎';
+
+            // --- 月相變換邏輯 (不變) ---
+            const moonPhases = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'];
+            let currentPhaseIndex = 0;
+            setInterval(() => {
+                moon.textContent = moonPhases[currentPhaseIndex];
+                currentPhaseIndex = (currentPhaseIndex + 1) % moonPhases.length;
+            }, 200);
+
+            // --- 【核心修改】讓月球跟隨滑鼠、發射、碰撞與返回 (大部分不變) ---
+            
+            let isLaunched = false;
+            let lastMousePos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+            let moonVelocity = { x: 0, y: 0 };
+            let animationFrameId = null;
+            const LAUNCH_SPEED_MULTIPLIER = 1.5;
+
+            function flyMoon() {
+                if (!isLaunched) return;
+                let currentX = parseFloat(moon.style.left);
+                let currentY = parseFloat(moon.style.top);
+                const moonWidth = moon.offsetWidth;
+                const moonHeight = moon.offsetHeight;
+                
+                let newX = currentX + moonVelocity.x;
+                let newY = currentY + moonVelocity.y;
+
+                // 這裡的邊界碰撞檢測，月球是用 transform(-50%,-50%) 置中的，
+                // 所以它的 left/top 是指中心點，而不是左上角。
+                // 為了簡化，我們用中心點來做邊界判斷。
+                if (newX - moonWidth/2 <= 0 || newX + moonWidth/2 >= window.innerWidth) {
+                    moonVelocity.x *= -1; 
+                }
+                if (newY - moonHeight/2 <= 0 || newY + moonHeight/2 >= window.innerHeight) {
+                    moonVelocity.y *= -1; 
+                }
+
+                moon.style.left = `${newX}px`;
+                moon.style.top = `${newY}px`;
+                animationFrameId = requestAnimationFrame(flyMoon);
+            }
+
+            window.addEventListener('mousemove', function(event) {
+                if (isLaunched) return;
+                const currentMouseX = event.clientX;
+                moon.style.left = `${currentMouseX}px`;
+                moon.style.top = `${event.clientY}px`;
+                if (currentMouseX > lastMousePos.x) {
+                    moon.style.zIndex = '5';
+                } else if (currentMouseX < lastMousePos.x) {
+                    moon.style.zIndex = '15';
+                }
+                moonVelocity.x = (event.clientX - lastMousePos.x);
+                moonVelocity.y = (event.clientY - lastMousePos.y);
+                lastMousePos.x = event.clientX;
+                lastMousePos.y = event.clientY;
+            });
+
+            // --- 5. 新增滑鼠右鍵點擊事件 (不變) ---
+            window.addEventListener('contextmenu', function(event) {
+                event.preventDefault();
+                if (isLaunched) {
+                    isLaunched = false;
+                    cancelAnimationFrame(animationFrameId);
+                    moon.style.left = `${event.clientX}px`;
+                    moon.style.top = `${event.clientY}px`;
+                    lastMousePos.x = event.clientX;
+                    lastMousePos.y = event.clientY;
+                }
+            });
+
+            
+            // --- 【全新邏輯】太空人創建、移動與碰撞 ---
+            
+            // 1. 建立一個陣列來儲存所有太空人物件
+            let robots = [];
+            const ROBOT_SPEED = 3; // 太空人基礎速度
+
+            // 2. 創建一個主動畫循環來更新所有太空人
+            function updateRobots() {
+                const moonRect = moon.getBoundingClientRect(); // 獲取月球當前的位置和大小
+
+                // 遍歷所有太空人
+                robots.forEach(robot => {
+                    // 更新位置
+                    robot.x += robot.vx;
+                    robot.y += robot.vy;
+
+                    // 邊界碰撞檢測
+                    // 檢查左右邊界
+                    if (robot.x - 50 <= 0 || robot.x + 50 >= window.innerWidth) {
+                        robot.vx *= -1; // X軸速度反向
+                    }
+                    // 檢查上下邊界
+                    if (robot.y - 50 <= 0 || robot.y + 50 >= window.innerHeight) {
+                        robot.vy *= -1; // Y軸速度反向
+                    }
+
+                    // 與月球的碰撞檢測
+                    const robotRect = robot.element.getBoundingClientRect();
+                    // 使用 AABB (Axis-Aligned Bounding Box) 碰撞檢測演算法
+                    if (
+                        robotRect.left < moonRect.right &&
+                        robotRect.right > moonRect.left &&
+                        robotRect.top < moonRect.bottom &&
+                        robotRect.bottom > moonRect.top
+                    ) {
+                        // 碰撞發生！讓太空人反彈
+                        // 一個簡單的反彈是直接反轉速度
+                        robot.vx *= -1.1; // 增加一點速度，看起來更有力
+                        robot.vy *= -1.1;
+
+                        // 為避免卡住，將太空人稍微移開月球
+                        robot.x += robot.vx * 3;
+                        robot.y += robot.vy * 3;
+                    }
+
+                    // 更新 DOM 元素的位置
+                    robot.element.style.left = `${robot.x}px`;
+                    robot.element.style.top = `${robot.y}px`;
+                });
+
+                // 請求下一幀動畫
+                requestAnimationFrame(updateRobots);
+            }
+
+            // 3. 修改滑鼠左鍵點擊事件 (同時發射月球 & 創建太空人)
+            window.addEventListener('mousedown', function(event) {
+                // event.button === 0 代表滑鼠左鍵
+                if (event.button === 0) {
+                    
+                    // --- 發射月球的邏輯 (只在未發射時觸發) ---
+                    if (!isLaunched) {
+                        isLaunched = true;
+                        moonVelocity.x *= LAUNCH_SPEED_MULTIPLIER;
+                        moonVelocity.y *= LAUNCH_SPEED_MULTIPLIER;
+                        flyMoon();
+                    }
+
+                    // --- 創建太空人的邏輯 (每次點擊都觸發) ---
+                    const robotEl = document.createElement('img');
+                    robotEl.src = './robot.png'; // 確保 robot.png 圖片與此 html 在同一個資料夾
+                    robotEl.className = 'robot';
+                    
+                    // 創建一個物件來管理太空人的狀態
+                    const robotObj = {
+                        element: robotEl,
+                        x: event.clientX, // 初始位置為滑鼠點擊處
+                        y: event.clientY,
+                        // 給予一個隨機的初始速度向量
+                        vx: (Math.random() - 0.5) * ROBOT_SPEED,
+                        vy: (Math.random() - 0.5) * ROBOT_SPEED,
+                    };
+                    
+                    // 如果初始速度太慢，給它一個最低速度，避免原地不動
+                    if (Math.abs(robotObj.vx) < 1) robotObj.vx = Math.sign(robotObj.vx) || 1;
+                    if (Math.abs(robotObj.vy) < 1) robotObj.vy = Math.sign(robotObj.vy) || 1;
+
+                    // 將太空人元素添加到網頁中
+                    document.body.appendChild(robotEl);
+                    // 將太空人物件添加到管理陣列中
+                    robots.push(robotObj);
+                }
+            });
+
+            // 4. 啟動太空人的主動畫循環
+            updateRobots();
+
+        });
+    </script>
+
+</body>
+</html>

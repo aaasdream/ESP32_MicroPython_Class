@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>寶寶看到奶瓶了嗎？</title>
+    <style>
+        /* 圖片 URL 常數化，方便管理 */
+        :root {
+            --crying-baby-url: url('https://keepmy.link/d7bf1b5a');
+            --happy-baby-url: url('https://keepmy.link/1861d85e');
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            height: 100vh;
+            width: 100vw;
+            /* 預設顯示哭哭的圖片 */
+            background-image: var(--crying-baby-url);
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            /* 讓背景圖片切換時有淡入淡出效果 */
+            transition: background-image 0.5s ease-in-out;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between; /* 讓標題和資訊框分開 */
+            align-items: center;
+        }
+
+        h1 {
+            color: white;
+            margin-top: 30px;
+            font-size: 2.5em;
+            /* 加上文字陰影，讓標題在各種背景下都清晰可見 */
+            text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.8);
+        }
+
+        .info-box {
+            position: fixed;
+            bottom: 15px;
+            right: 15px;
+            background-color: rgba(0, 0, 0, 0.6); /* 半透明背景 */
+            padding: 10px 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            font-size: 0.9em;
+            text-align: right;
+        }
+
+        #distance-display {
+            font-weight: bold;
+            font-size: 1.2em;
+            color: #03dac6; /* 沿用原本的科技感顏色 */
+        }
+        
+        #status {
+            margin-top: 5px;
+            font-style: italic;
+            font-size: 0.8em;
+        }
+
+        .status-connected { color: #4caf50; }
+        .status-disconnected { color: #f44336; }
+    </style>
+</head>
+<body>
+    <h1>寶寶看到奶瓶了嗎？</h1>
+
+    <div class="info-box">
+        <div>
+            距離: <span id="distance-display">--</span> cm
+        </div>
+        <p id="status" class="status-disconnected">正在連線...</p>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const distanceDisplay = document.getElementById('distance-display');
+            const statusElement = document.getElementById('status');
+            const bodyElement = document.body;
+            
+            // 將圖片 URL 定義為常數，方便管理和閱讀
+            const HAPPY_BABY_URL = "url('https://keepmy.link/1861d85e')";
+            const CRYING_BABY_URL = "url('https://keepmy.link/d7bf1b5a')";
+
+            const wsUrl = `ws://${window.location.host}/ws`;
+            let socket;
+
+            function connect() {
+                socket = new WebSocket(wsUrl);
+
+                socket.onopen = () => {
+                    console.log('WebSocket 連線成功！');
+                    statusElement.textContent = '已連線';
+                    statusElement.className = 'status-connected';
+                };
+
+                socket.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.distance !== undefined) {
+                            const distance = data.distance;
+
+                            // 1. 更新右下角的距離數值
+                            if (distance > 0) {
+                                distanceDisplay.textContent = distance.toFixed(2);
+                            } else {
+                                distanceDisplay.textContent = '--';
+                            }
+
+                            // 2. 根據距離切換背景圖片
+                            if (distance > 0 && distance < 20) {
+                                // 距離小於 20 公分，顯示開心寶寶
+                                if (bodyElement.style.backgroundImage !== HAPPY_BABY_URL) {
+                                    bodyElement.style.backgroundImage = HAPPY_BABY_URL;
+                                }
+                            } else {
+                                // 距離大於等於 20 公分或超出範圍，顯示哭哭寶寶
+                                if (bodyElement.style.backgroundImage !== CRYING_BABY_URL) {
+                                    bodyElement.style.backgroundImage = CRYING_BABY_URL;
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.error('解析 JSON 失敗:', e);
+                    }
+                };
+
+                socket.onclose = () => {
+                    console.log('WebSocket 連線已關閉。5 秒後嘗試重新連線...');
+                    statusElement.textContent = '已斷線，嘗試重新連線...';
+                    statusElement.className = 'status-disconnected';
+                    distanceDisplay.textContent = '--';
+                    // 斷線時，恢復為預設的哭哭寶寶圖片
+                    bodyElement.style.backgroundImage = CRYING_BABY_URL;
+                    setTimeout(connect, 5000);
+                };
+
+                socket.onerror = (error) => {
+                    console.error('WebSocket 錯誤:', error);
+                    socket.close(); // 觸發 onclose 的重連邏輯
+                };
+            }
+
+            connect();
+        });
+    </script>
+</body>
+</html>

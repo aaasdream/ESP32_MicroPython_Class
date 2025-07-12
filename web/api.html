@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 生命導師算命</title>
+    <style>
+        /* --- 基本樣式 --- */
+        :root {
+            --primary-color: #e0cda9; /* 羊皮紙色 */
+            --secondary-color: #3a2d21; /* 深棕色 */
+            --accent-color: #f7b733; /* 金色閃光 */
+            --bg-color: #1a1a1a; /* 深邃背景 */
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes blink {
+            50% { border-color: transparent; }
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--primary-color);
+            font-family: 'Noto Serif TC', 'KaiTi', 'Times New Roman', serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            transition: background-color 0.5s;
+        }
+
+        /* --- 主容器 --- */
+        .container {
+            position: relative;
+            width: 90%;
+            max-width: 600px;
+            padding: 40px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--secondary-color);
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+        
+        /* --- API 金鑰輸入框 --- */
+        .api-key-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            backdrop-filter: blur(5px);
+            animation: fadeIn 0.5s ease-in-out;
+        }
+
+        .api-key-dialog {
+            background: var(--bg-color);
+            padding: 30px;
+            border-radius: 10px;
+            border: 1px solid var(--primary-color);
+            box-shadow: 0 0 30px var(--accent-color);
+            text-align: center;
+        }
+
+        .api-key-dialog h2 {
+            margin-top: 0;
+            color: var(--primary-color);
+        }
+
+        #apiKeyInput {
+            width: 300px;
+            padding: 10px;
+            background: var(--secondary-color);
+            border: 1px solid var(--primary-color);
+            color: white;
+            border-radius: 5px;
+        }
+
+        /* --- 輸入區域 --- */
+        .input-container {
+            opacity: 1;
+            transition: opacity 0.5s ease-out;
+        }
+
+        .input-container.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        label {
+            display: block;
+            font-size: 1.5em;
+            margin-bottom: 20px;
+        }
+
+        #questionInput {
+            width: 80%;
+            padding: 15px;
+            font-size: 1.2em;
+            border: 1px solid var(--primary-color);
+            background: transparent;
+            color: var(--primary-color);
+            border-radius: 8px;
+            text-align: center;
+            transition: all 1.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+        }
+        
+        /* 動畫觸發後的輸入框樣式 */
+        body.processing #questionInput {
+            width: 0;
+            padding-left: 0;
+            padding-right: 0;
+            opacity: 0;
+            border-color: transparent;
+        }
+
+        /* --- 按鈕樣式 --- */
+        .btn {
+            padding: 12px 25px;
+            font-size: 1.1em;
+            font-family: inherit;
+            cursor: pointer;
+            border: 1px solid var(--primary-color);
+            background-color: var(--secondary-color);
+            color: var(--primary-color);
+            border-radius: 8px;
+            margin-top: 20px;
+            transition: all 1.5s cubic-bezier(0.68, -0.55, 0.27, 1.55), background-color 0.3s, box-shadow 0.3s;
+            position: relative; /* 為了讓 transform-origin 生效 */
+        }
+        
+        .btn:hover {
+            background-color: var(--primary-color);
+            color: var(--secondary-color);
+            box-shadow: 0 0 15px var(--accent-color);
+        }
+        
+        /* 動畫觸發後的按鈕樣式 */
+        body.processing #submitButton {
+            transform: translate(-50%, -100%); /* 移動到容器中央偏上 */
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            z-index: 10;
+        }
+
+        /* --- 結果顯示區域 --- */
+        .result-container {
+            opacity: 0;
+            height: 0;
+            overflow: hidden;
+            transition: opacity 1s ease-in 1.5s; /* 延遲出現 */
+            min-height: 150px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        body.processing .result-container {
+            opacity: 1;
+            height: auto;
+        }
+        
+        #resultText {
+            font-size: 1.4em;
+            line-height: 1.8;
+            text-align: left;
+            white-space: pre-wrap;
+            width: 100%;
+        }
+
+        #resultText::after {
+            content: '▍';
+            animation: blink 1s step-end infinite;
+            margin-left: 5px;
+            color: var(--accent-color);
+        }
+        
+        #resultText.finished::after {
+            content: ''; /* 打字結束後隱藏游標 */
+            animation: none;
+        }
+
+        /* --- 閃光動畫 --- */
+        #sparkleContainer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        @keyframes sparkle-anim {
+            0% {
+                transform: scale(0);
+                opacity: 1;
+            }
+            70% {
+                transform: scale(1.5);
+                opacity: 0.8;
+            }
+            100% {
+                transform: scale(2);
+                opacity: 0;
+            }
+        }
+
+        .sparkle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: radial-gradient(circle, var(--accent-color) 0%, rgba(255,215,0,0) 70%);
+            border-radius: 50%;
+            opacity: 0;
+            animation: sparkle-anim 1s ease-out forwards;
+        }
+
+        /* --- 隱藏/顯示輔助 --- */
+        .hidden {
+            display: none !important;
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- API Key 輸入 Modal -->
+    <div id="apiKeyModal" class="api-key-modal">
+        <div class="api-key-dialog">
+            <h2>請輸入您的 Gemini API Key</h2>
+            <p style="font-size: 0.8em; opacity: 0.7;">請至 Google AI Studio 取得</p>
+            <input type="password" id="apiKeyInput" placeholder="在此貼上您的金鑰">
+            <button id="saveApiKeyButton" class="btn">儲存金鑰</button>
+        </div>
+    </div>
+    
+    <!-- 主內容容器 -->
+    <div class="container">
+        <!-- 閃光效果的容器 -->
+        <div id="sparkleContainer"></div>
+        
+        <!-- 輸入問題的表單 -->
+        <div id="inputSection" class="input-container">
+            <label for="questionInput">請問你想問什麼事：</label>
+            <input type="text" id="questionInput" placeholder="例如：我最近的事業運如何？">
+            <br>
+            <button id="submitButton" class="btn">確定</button>
+        </div>
+
+        <!-- 顯示結果的區域 -->
+        <div id="resultSection" class="result-container">
+            <p id="resultText"></p>
+        </div>
+        
+        <!-- 重新開始的按鈕 -->
+        <button id="resetButton" class="btn hidden">再問一次</button>
+    </div>
+
+    <script>
+        // DOM 元素獲取
+        const apiKeyModal = document.getElementById('apiKeyModal');
+        const apiKeyInput = document.getElementById('apiKeyInput');
+        const saveApiKeyButton = document.getElementById('saveApiKeyButton');
+        
+        const questionInput = document.getElementById('questionInput');
+        const submitButton = document.getElementById('submitButton');
+        const resetButton = document.getElementById('resetButton');
+
+        const inputSection = document.getElementById('inputSection');
+        const resultSection = document.getElementById('resultSection');
+        const resultText = document.getElementById('resultText');
+        const sparkleContainer = document.getElementById('sparkleContainer');
+        const body = document.body;
+
+        let geminiApiKey = null;
+        
+        // Gemini API 模型名稱，使用者指定 gemini-2.0-flash，但目前最接近且廣泛可用的高效模型是 gemini-1.5-flash
+        const MODEL_NAME = "gemini-1.5-flash"; 
+        
+        // 系統提示 (Prompt)
+        const SYSTEM_PROMPT = `這是一個生命導師，我們使用算命的形式來讓詢問問題的人得到正向的積極回答，但要帶有神秘的文字，不能白話需要有所隱喻．你的回答必須遵循以下規則：
+1. 語氣神秘、充滿智慧，如同古老的預言家。
+2. 使用比喻和象徵，避免直接給出「是」或「否」的答案。
+3. 內容必須是正面、鼓舞人心的，引導提問者看見希望與可能性。
+4. 文字簡潔而深刻，不要過於冗長。
+5. 保持一致的神秘風格。`;
+
+        // 儲存 API Key
+        saveApiKeyButton.addEventListener('click', () => {
+            const key = apiKeyInput.value.trim();
+            if (key) {
+                geminiApiKey = key;
+                apiKeyModal.style.display = 'none';
+            } else {
+                alert('請輸入有效的 API Key。');
+            }
+        });
+
+        // 提交問題按鈕事件
+        submitButton.addEventListener('click', async () => {
+            const question = questionInput.value.trim();
+            if (!question) {
+                alert('問題不能為空，請輸入你的疑惑。');
+                return;
+            }
+            if (!geminiApiKey) {
+                alert('請先設定您的 API Key。');
+                apiKeyModal.style.display = 'flex';
+                return;
+            }
+
+            // --- 開始儀式動畫 ---
+            body.classList.add('processing');
+            submitButton.disabled = true;
+            submitButton.textContent = '占卜中...';
+            createSparkles(20); // 產生20個閃光
+
+            // 等待動畫播放
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            // 隱藏輸入框和按鈕
+            inputSection.classList.add('hidden');
+            submitButton.classList.add('hidden');
+
+            // 顯示結果區域
+            resultSection.classList.remove('hidden');
+
+            try {
+                // 呼叫 Gemini API
+                const response = await callGeminiAPI(question);
+                // 使用打字機效果顯示結果
+                await typewriterEffect(response, resultText);
+            } catch (error) {
+                console.error('API Error:', error);
+                resultText.textContent = `星辰的連結似乎暫時中斷了... (${error.message}) \n請檢查你的金鑰或網路連線。`;
+            } finally {
+                // 顯示「再問一次」按鈕
+                resetButton.classList.remove('hidden');
+                resultText.classList.add('finished'); // 移除打字游標
+            }
+        });
+
+        // 再問一次按鈕事件
+        resetButton.addEventListener('click', () => {
+            body.classList.remove('processing');
+            
+            // 重置各元素狀態
+            inputSection.classList.remove('hidden');
+            resultSection.classList.add('hidden');
+            resultText.innerHTML = '';
+            resultText.classList.remove('finished');
+            
+            questionInput.value = '';
+            
+            submitButton.classList.remove('hidden');
+            submitButton.disabled = false;
+            submitButton.textContent = '確定';
+
+            resetButton.classList.add('hidden');
+            
+            // 清空閃光
+            sparkleContainer.innerHTML = '';
+        });
+
+        /**
+         * 呼叫 Gemini API
+         * @param {string} userQuestion - 使用者輸入的問題
+         * @returns {Promise<string>} - Gemini 回傳的答案
+         */
+        async function callGeminiAPI(userQuestion) {
+            const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${geminiApiKey}`;
+
+            const requestBody = {
+                "contents": [{
+                    "parts": [{ "text": userQuestion }],
+                    "role": "user"
+                }],
+                "systemInstruction": {
+                    "parts": [{ "text": SYSTEM_PROMPT }]
+                },
+                "generationConfig": {
+                    "temperature": 0.8, // 增加一點隨機性，讓回答更多變
+                    "maxOutputTokens": 500,
+                }
+            };
+            
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error.message || `HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            
+            // 確保有回傳內容
+            if (data.candidates && data.candidates.length > 0) {
+                return data.candidates[0].content.parts[0].text;
+            } else {
+                return "星空靜默，未有回應...";
+            }
+        }
+        
+        /**
+         * 打字機效果
+         * @param {string} text - 要顯示的文字
+         * @param {HTMLElement} element - 顯示文字的 HTML 元素
+         * @param {number} speed - 打字速度 (毫秒)
+         */
+        function typewriterEffect(text, element, speed = 60) {
+            element.innerHTML = '';
+            let i = 0;
+            return new Promise(resolve => {
+                const timer = setInterval(() => {
+                    if (i < text.length) {
+                        element.innerHTML += text.charAt(i);
+                        i++;
+                    } else {
+                        clearInterval(timer);
+                        resolve();
+                    }
+                }, speed);
+            });
+        }
+        
+        /**
+         * 產生閃光效果
+         * @param {number} count - 閃光的數量
+         */
+        function createSparkles(count) {
+            sparkleContainer.innerHTML = ''; // 清除舊的
+            for (let i = 0; i < count; i++) {
+                const sparkle = document.createElement('div');
+                sparkle.className = 'sparkle';
+                sparkle.style.top = `${Math.random() * 100}%`;
+                sparkle.style.left = `${Math.random() * 100}%`;
+                sparkle.style.animationDelay = `${Math.random() * 1.5}s`; // 讓閃光錯開出現
+                
+                sparkleContainer.appendChild(sparkle);
+                
+                // 動畫結束後移除元素，避免佔用資源
+                setTimeout(() => {
+                    sparkle.remove();
+                }, 2500);
+            }
+        }
+
+    </script>
+</body>
+</html>

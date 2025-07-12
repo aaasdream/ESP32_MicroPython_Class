@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>月球環繞地球</title>
+    <style>
+        /* CSS 樣式 (完全不變) */
+
+        /* 1. 基本設定與深色背景 */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0c0c1a;
+            cursor: none;
+        }
+
+        /* 2. 星星的容器 */
+        #star-container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            /* 將星星放在最底層 */
+            z-index: 1; 
+        }
+
+        /* 3. 單顆星星的樣式 */
+        .star {
+            position: absolute;
+            color: white;
+            animation-name: twinkle;
+            animation-iteration-count: infinite;
+            animation-timing-function: ease-in-out;
+            animation-direction: alternate;
+        }
+
+        /* 4. 星星閃爍的關鍵影格動畫 */
+        @keyframes twinkle {
+            0% { opacity: 0.2; transform: scale(0.8); }
+            100% { opacity: 1; transform: scale(1.2); }
+        }
+
+        /* 5. 月球的樣式 */
+        #moon {
+            position: absolute;
+            width: 200px;
+            height: 200px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 160px; 
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            /* 預設圖層，會由 JS 動態修改 */
+            z-index: 15; 
+        }
+
+        /* 6. 地球的樣式 (新增) */
+        #earth {
+            position: absolute;
+            /* 透過 top/left 50% 和 transform -50% 來完美置中 */
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            
+            width: 300px;
+            height: 300px;
+
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 250px;
+            
+            /* 設定地球的基準圖層，介於月球的兩種狀態之間 */
+            z-index: 10;
+
+            /* 讓地球緩慢旋轉 */
+            animation: spin 60s linear infinite;
+        }
+
+        /* 7. 地球旋轉的關鍵影格動畫 (新增) */
+        @keyframes spin {
+            from {
+                /* 必須同時保留 translate(-50%, -50%) 才能在旋轉時也保持置中 */
+                transform: translate(-50%, -50%) rotate(0deg);
+            }
+            to {
+                transform: translate(-50%, -50%) rotate(360deg);
+            }
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- 容器順序不影響 z-index 的最終結果 -->
+    <div id="star-container"></div>
+    <div id="earth"></div>
+    <div id="moon"></div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            
+            // --- 星空產生邏輯 (不變) ---
+            const starContainer = document.getElementById('star-container');
+            const numStars = 250;
+            for (let i = 0; i < numStars; i++) {
+                const star = document.createElement('div');
+                star.classList.add('star');
+                star.textContent = '•';
+                star.style.top = `${Math.random() * 100}vh`;
+                star.style.left = `${Math.random() * 100}vw`;
+                star.style.fontSize = `${Math.random() * 3 + 1}px`;
+                star.style.animationDuration = `${Math.random() * 4 + 3}s`;
+                star.style.animationDelay = `${Math.random() * 5}s`;
+                starContainer.appendChild(star);
+            }
+
+            // --- 抓取月球和地球的元素 (不變) ---
+            const moon = document.getElementById('moon');
+            const earth = document.getElementById('earth');
+            
+            earth.textContent = '🌎';
+
+            // --- 月相變換邏輯 (不變) ---
+            const moonPhases = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'];
+            let currentPhaseIndex = 0;
+            setInterval(() => {
+                moon.textContent = moonPhases[currentPhaseIndex];
+                currentPhaseIndex = (currentPhaseIndex + 1) % moonPhases.length;
+            }, 200);
+
+            // --- 【核心修改】讓月球跟隨滑鼠、發射、碰撞與返回 ---
+            
+            // --- 1. 新增狀態變數 ---
+            let isLaunched = false; // 月球是否已發射
+            let lastMousePos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+            let moonVelocity = { x: 0, y: 0 }; // 月球的速度向量
+            let animationFrameId = null; // 用於儲存 requestAnimationFrame 的 ID，以便取消
+            const LAUNCH_SPEED_MULTIPLIER = 1.5; // 發射速度的乘數，可調整
+
+            // --- 2. 飛行與碰撞的動畫函式 ---
+            function flyMoon() {
+                if (!isLaunched) return; // 如果不是飛行狀態，就停止函式
+
+                // 獲取當前月球位置與尺寸
+                let currentX = moon.offsetLeft;
+                let currentY = moon.offsetTop;
+                const moonWidth = moon.offsetWidth;
+                const moonHeight = moon.offsetHeight;
+                
+                // 計算新位置
+                let newX = currentX + moonVelocity.x;
+                let newY = currentY + moonVelocity.y;
+
+                // 邊界碰撞檢測
+                // 檢查左右邊界
+                if (newX <= 0 || newX + moonWidth >= window.innerWidth) {
+                    moonVelocity.x *= -1; // X軸速度反向
+                    newX = Math.max(0, Math.min(newX, window.innerWidth - moonWidth)); // 確保不出界
+                }
+                // 檢查上下邊界
+                if (newY <= 0 || newY + moonHeight >= window.innerHeight) {
+                    moonVelocity.y *= -1; // Y軸速度反向
+                    newY = Math.max(0, Math.min(newY, window.innerHeight - moonHeight)); // 確保不出界
+                }
+
+                // 更新月球位置
+                moon.style.left = `${newX}px`;
+                moon.style.top = `${newY}px`;
+
+                // 請求下一幀動畫
+                animationFrameId = requestAnimationFrame(flyMoon);
+            }
+
+            // --- 3. 修改滑鼠移動事件監聽 ---
+            window.addEventListener('mousemove', function(event) {
+                // 如果月球已發射，則不執行任何跟隨操作
+                if (isLaunched) return;
+
+                const currentMouseX = event.clientX;
+
+                // 1. 移動月球位置
+                moon.style.left = `${currentMouseX}px`;
+                moon.style.top = `${event.clientY}px`;
+
+                // 2. 判斷滑鼠移動方向並設定 z-index
+                if (currentMouseX > lastMousePos.x) {
+                    moon.style.zIndex = '5';
+                } else if (currentMouseX < lastMousePos.x) {
+                    moon.style.zIndex = '15';
+                }
+
+                // 3. 【關鍵】計算瞬間速度，為發射做準備
+                moonVelocity.x = (event.clientX - lastMousePos.x);
+                moonVelocity.y = (event.clientY - lastMousePos.y);
+
+                // 4. 更新 lastMousePos，為下一次的移動事件做準備
+                lastMousePos.x = event.clientX;
+                lastMousePos.y = event.clientY;
+            });
+
+            // --- 4. 新增滑鼠左鍵點擊事件 (發射月球) ---
+            window.addEventListener('mousedown', function(event) {
+                // event.button === 0 代表滑鼠左鍵
+                // 只有在未發射狀態下才能發射
+                if (event.button === 0 && !isLaunched) {
+                    isLaunched = true;
+                    
+                    // 將最後偵測到的速度乘以一個係數，讓發射更有力
+                    moonVelocity.x *= LAUNCH_SPEED_MULTIPLIER;
+                    moonVelocity.y *= LAUNCH_SPEED_MULTIPLIER;
+                    
+                    // 啟動飛行與碰撞動畫
+                    flyMoon();
+                }
+            });
+
+            // --- 5. 新增滑鼠右鍵點擊事件 (召回月球) ---
+            window.addEventListener('contextmenu', function(event) {
+                // 防止瀏覽器預設的右鍵選單跳出
+                event.preventDefault();
+
+                if (isLaunched) {
+                    // 停止飛行
+                    isLaunched = false;
+                    // 取消動畫循環
+                    cancelAnimationFrame(animationFrameId);
+                    
+                    // 月球會自動在下一次滑鼠移動時，重新跟隨滑鼠
+                    // 為了更好的體驗，可以立即將其位置更新到當前滑鼠位置
+                    moon.style.left = `${event.clientX}px`;
+                    moon.style.top = `${event.clientY}px`;
+                    lastMousePos.x = event.clientX;
+                    lastMousePos.y = event.clientY;
+                }
+            });
+        });
+    </script>
+
+</body>
+</html>

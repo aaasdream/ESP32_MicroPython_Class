@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>跟隨滑鼠的月相變化</title>
+    <style>
+        /* CSS 樣式 */
+
+        /* 基礎設定 */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            /* 【修正 1】: 移除 body 的背景色，讓下一層的星空背景可以顯示出來 */
+            background-color: transparent; 
+            cursor: none;
+        }
+
+        /* 星星的容器 (現在也是我們的背景層) */
+        .starry-sky {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            /* 【修正 2】: 將背景色加到這裡 */
+            background-color: #0c0c1a; 
+            /* 【修正 3】: 設定一個基礎的 z-index，避免被隱藏 */
+            z-index: 0;
+        }
+
+        /* 單一星星的樣式 */
+        .star {
+            position: absolute;
+            background-color: white;
+            border-radius: 50%;
+            animation: twinkle linear infinite;
+        }
+
+        @keyframes twinkle {
+            0%, 100% {
+                opacity: 0.2;
+                transform: scale(0.8);
+            }
+            50% {
+                opacity: 1;
+                transform: scale(1.2);
+            }
+        }
+
+        /* 月球的樣式 */
+        #moon {
+            position: absolute;
+            width: 200px;
+            height: 200px;
+            font-size: 150px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            transition: top 0.1s linear, left 0.1s linear;
+            
+            /* 【修正 4】: 明確設定 z-index 高於星空，確保月球在最上層 */
+            z-index: 10;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="starry-sky" id="starry-sky"></div>
+    <div id="moon"></div>
+
+    <script>
+        // JavaScript 程式碼 (無需修改)
+
+        const moonElement = document.getElementById('moon');
+        const skyElement = document.getElementById('starry-sky');
+
+        // 1. 月相變化邏輯
+        const moonPhases = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'];
+        let currentPhaseIndex = 0;
+        setInterval(() => {
+            moonElement.textContent = moonPhases[currentPhaseIndex];
+            currentPhaseIndex = (currentPhaseIndex + 1) % moonPhases.length;
+        }, 200); // 1000ms / 5fps = 200ms
+
+        // 2. 月球跟隨滑鼠邏輯
+        window.addEventListener('mousemove', (event) => {
+            const x = event.clientX;
+            const y = event.clientY;
+            moonElement.style.left = `${x}px`;
+            moonElement.style.top = `${y}px`;
+        });
+
+        // 3. 隨機生成星星邏輯
+        function createStars() {
+            const numberOfStars = 250; 
+            for (let i = 0; i < numberOfStars; i++) {
+                const star = document.createElement('div');
+                star.className = 'star';
+                const size = Math.random() * 2 + 1;
+                star.style.width = `${size}px`;
+                star.style.height = `${size}px`;
+                star.style.top = `${Math.random() * 100}vh`;
+                star.style.left = `${Math.random() * 100}vw`;
+                star.style.animationDelay = `${Math.random() * 5}s`;
+                star.style.animationDuration = `${Math.random() * 3 + 2}s`;
+                skyElement.appendChild(star);
+            }
+        }
+        createStars();
+    </script>
+</body>
+</html>

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emoji 瀏覽器</title>
+    <style>
+        /* CSS 樣式 */
+        :root {
+            --bg-color: #f0f2f5;
+            --card-bg: #ffffff;
+            --text-color: #333;
+            --code-color: #666;
+            --border-color: #e0e0e0;
+            --accent-color: #007bff;
+            --hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            color: var(--accent-color);
+        }
+        
+        #emoji-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px; /* 圖示間的間距 */
+            justify-content: center;
+        }
+
+        .emoji-item {
+            width: 90px;
+            height: 90px;
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            user-select: none; /* 防止選取文字 */
+        }
+
+        .emoji-item:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--hover-shadow);
+        }
+
+        .emoji-char {
+            font-size: 2.5rem; /* 放大圖示 */
+            line-height: 1.2;
+        }
+
+        .emoji-code {
+            font-size: 0.7rem;
+            color: var(--code-color);
+            font-family: "Courier New", Courier, monospace;
+        }
+
+        /* 複製成功的提示訊息 */
+        #copy-notification {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.75);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            pointer-events: none; /* 讓滑鼠可以穿透 */
+        }
+
+        #copy-notification.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(-10px);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Emoji 瀏覽器</h1>
+        <p>點擊任一圖示即可複製！</p>
+    </div>
+
+    <div id="emoji-container">
+        <!-- Emoji 將由 JavaScript 動態生成於此 -->
+    </div>
+
+    <!-- 複製成功的提示框 -->
+    <div id="copy-notification">已複製到剪貼簿！</div>
+
+    <script>
+        // JavaScript 程式碼
+        document.addEventListener('DOMContentLoaded', () => {
+            const container = document.getElementById('emoji-container');
+            const notification = document.getElementById('copy-notification');
+
+            // 定義常見的 Emoji Unicode 編碼範圍
+            // 這是個代表性的集合，涵蓋了絕大多數常用 Emoji
+            // Unicode 標準會不斷更新，所以這不是一個絕對完整的列表，但已經非常全面了
+            const emojiRanges = [
+                { start: 0x1F600, end: 0x1F64F }, // Emoticons
+                { start: 0x1F300, end: 0x1F5FF }, // Miscellaneous Symbols and Pictographs
+                { start: 0x1F680, end: 0x1F6FF }, // Transport and Map Symbols
+                { start: 0x1F1E6, end: 0x1F1FF }, // Regional Indicator Symbols (國旗)
+                { start: 0x2600,  end: 0x26FF  }, // Miscellaneous Symbols
+                { start: 0x2700,  end: 0x27BF  }, // Dingbats
+                { start: 0xFE00,  end: 0xFE0F  }, // Variation Selectors (處理膚色等)
+                { start: 0x1F900, end: 0x1F9FF }, // Supplemental Symbols and Pictographs
+                { start: 0x1FA70, end: 0x1FAFF }  // Symbols and Pictographs Extended-A
+            ];
+
+            // 步驟 1: 使用迴圈生成所有 Emoji
+            emojiRanges.forEach(range => {
+                for (let codePoint = range.start; codePoint <= range.end; codePoint++) {
+                    // 將 Unicode 碼點轉換為字元
+                    const emojiChar = String.fromCodePoint(codePoint);
+                    
+                    // 創建顯示容器
+                    const item = document.createElement('div');
+                    item.className = 'emoji-item';
+                    
+                    // 創建 Emoji 字元元素
+                    const charSpan = document.createElement('span');
+                    charSpan.className = 'emoji-char';
+                    charSpan.textContent = emojiChar;
+                    
+                    // 創建編碼文字元素
+                    const codeSpan = document.createElement('code');
+                    codeSpan.className = 'emoji-code';
+                    codeSpan.textContent = `U+${codePoint.toString(16).toUpperCase()}`;
+                    
+                    // 將元素組合起來
+                    item.appendChild(charSpan);
+                    item.appendChild(codeSpan);
+                    
+                    // 把整個項目加到主容器中
+                    container.appendChild(item);
+                }
+            });
+
+            // 步驟 2 & 3: 處理點擊事件以複製到剪貼簿
+            container.addEventListener('click', (event) => {
+                // 使用 .closest() 來確保無論點到圖示還是文字，都能找到父容器
+                const clickedItem = event.target.closest('.emoji-item');
+                
+                if (!clickedItem) {
+                    return; // 如果點擊的不是 emoji-item，則不執行任何操作
+                }
+
+                const emojiToCopy = clickedItem.querySelector('.emoji-char').textContent;
+
+                // 使用現代的 Clipboard API
+                navigator.clipboard.writeText(emojiToCopy).then(() => {
+                    // 複製成功後，顯示提示訊息
+                    showNotification();
+                }).catch(err => {
+                    console.error('無法複製 Emoji: ', err);
+                    alert('複製失敗，您的瀏覽器可能不支援此功能。');
+                });
+            });
+            
+            let notificationTimer;
+            function showNotification() {
+                // 清除上一次的計時器，避免快速點擊時閃爍
+                clearTimeout(notificationTimer);
+                
+                notification.classList.add('show');
+                
+                // 設定 1.5 秒後自動隱藏提示
+                notificationTimer = setTimeout(() => {
+                    notification.classList.remove('show');
+                }, 1500);
+            }
+        });
+    </script>
+
+</body>
+</html>

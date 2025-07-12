@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>跟隨滑鼠的月相變化</title>
+    <style>
+        /* CSS 樣式 */
+
+        /* 基礎設定 */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* 隱藏捲軸，避免元素超出邊界時出現 */
+            background-color: #0c0c1a; /* 深藍色背景，模擬夜空 */
+            cursor: none; /* 隱藏原始的滑鼠游標 */
+        }
+
+        /* 星星的容器 */
+        .starry-sky {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* 讓滑鼠事件可以穿透此層 */
+            z-index: -1; /* 確保在最底層 */
+        }
+
+        /* 單一星星的樣式 */
+        .star {
+            position: absolute;
+            background-color: white;
+            border-radius: 50%; /* 圓形 */
+            animation: twinkle linear infinite; /* 套用閃爍動畫 */
+        }
+
+        /* 星星閃爍的關鍵影格動畫 */
+        @keyframes twinkle {
+            0%, 100% {
+                opacity: 0.2;
+                transform: scale(0.8);
+            }
+            50% {
+                opacity: 1;
+                transform: scale(1.2);
+            }
+        }
+
+        /* 月球的樣式 */
+        #moon {
+            position: absolute; /* 絕對定位，才能用 JS 控制位置 */
+            width: 200px;
+            height: 200px;
+            font-size: 150px; /* Emoji 的大小由字體大小控制 */
+            
+            /* 使用 Flexbox 讓 Emoji 在 div 中完美置中 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+
+            /* 關鍵：讓滑鼠事件穿透月球本身，否則當滑鼠在月球上時會卡住 */
+            pointer-events: none; 
+
+            /* 
+             * 讓月球的中心點對準滑鼠游標
+             * JS 設定的 top/left 是元素的左上角，此 transform 將其向左和向上平移自身寬高的一半
+             */
+            transform: translate(-50%, -50%);
+            
+            /* 讓位置變化更平滑 */
+            transition: top 0.1s linear, left 0.1s linear; 
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- 星星會被動態加到這個 div 中 -->
+    <div class="starry-sky" id="starry-sky"></div>
+
+    <!-- 月球本體 -->
+    <div id="moon"></div>
+
+    <script>
+        // JavaScript 程式碼
+
+        // 獲取 DOM 元素
+        const moonElement = document.getElementById('moon');
+        const skyElement = document.getElementById('starry-sky');
+
+        // 1. 月相變化邏輯
+        // ===================================
+        const moonPhases = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'];
+        let currentPhaseIndex = 0;
+
+        // 設定一個計時器，每秒更換5次月相
+        // 1000ms / 5fps = 200ms
+        setInterval(() => {
+            // 更新月球的 Emoji 內容
+            moonElement.textContent = moonPhases[currentPhaseIndex];
+            
+            // 計算下一個月相的索引，使用 % 運算符實現循環
+            currentPhaseIndex = (currentPhaseIndex + 1) % moonPhases.length;
+        }, 200);
+
+
+        // 2. 月球跟隨滑鼠邏輯
+        // ===================================
+        window.addEventListener('mousemove', (event) => {
+            // event.clientX 和 event.clientY 是滑鼠在視窗中的座標
+            const x = event.clientX;
+            const y = event.clientY;
+
+            // 更新月球的位置
+            // CSS 中的 transform: translate(-50%, -50%) 會確保月球中心對準滑鼠
+            moonElement.style.left = `${x}px`;
+            moonElement.style.top = `${y}px`;
+        });
+
+
+        // 3. 隨機生成星星邏輯
+        // ===================================
+        function createStars() {
+            const numberOfStars = 250; // 可以調整星星的數量
+
+            for (let i = 0; i < numberOfStars; i++) {
+                const star = document.createElement('div');
+                star.className = 'star';
+
+                // 隨機大小 (1px 到 3px)
+                const size = Math.random() * 2 + 1;
+                star.style.width = `${size}px`;
+                star.style.height = `${size}px`;
+
+                // 隨機位置 (vw/vh 是相對於視窗寬高)
+                star.style.top = `${Math.random() * 100}vh`;
+                star.style.left = `${Math.random() * 100}vw`;
+
+                // 隨機動畫延遲和持續時間，讓閃爍效果錯開
+                star.style.animationDelay = `${Math.random() * 5}s`;
+                star.style.animationDuration = `${Math.random() * 3 + 2}s`; // 持續 2-5 秒
+
+                skyElement.appendChild(star);
+            }
+        }
+
+        // 頁面載入後立即生成星星
+        createStars();
+
+    </script>
+</body>
+</html>
